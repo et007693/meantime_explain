@@ -9,9 +9,12 @@ import random
 class AbstractDataloader(metaclass=ABCMeta):
     def __init__(self, args, dataset):
         self.args = args
+        # 시드 고정
         seed = args.dataloader_random_seed
         self.rng = random.Random(seed)
         self.sampler_rng = random.Random(seed)  # share seed for now... (doesn't really matter)
+
+        # 전처리된 데이터셋 경로 지정
         save_folder = dataset._get_preprocessed_folder_path()
         dataset = dataset.load_dataset()
         self.dataset = dataset

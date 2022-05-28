@@ -27,6 +27,7 @@ class AbstractDataset(metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
+    # 무슨 데이터인지 ex)ml-1m
     def code(cls):
         pass
 
@@ -55,24 +56,39 @@ class AbstractDataset(metaclass=ABCMeta):
     def load_ratings_df(self):
         pass
 
+    # data load
     def load_dataset(self):
         self.preprocess()
         dataset_path = self._get_preprocessed_dataset_path()
         dataset = pickle.load(dataset_path.open('rb'))
         return dataset
 
+    # 데이터 전처리
     def preprocess(self):
+        # 데이터 저장 경로
         dataset_path = self._get_preprocessed_dataset_path()
         if dataset_path.is_file():
             print('Already preprocessed. Skip preprocessing')
             return
+
+        # 데이터가 경로에 없으면, 폴더 생성
         if not dataset_path.parent.is_dir():
             dataset_path.parent.mkdir(parents=True)
+
+        # 데이터 다운
         self.maybe_download_raw_dataset()
+        # open dataset
         df = self.load_ratings_df()
+        # 데이터의 rating이 기준 이하인 경우 버림
         df = self.make_implicit(df)
+        # 일정 갯수 이하인 데이터 버림(user, item)
         df = self.filter_triplets(df)
+
+        # umap, smap : 유저, 아이템 라벨 인코딩
+        # df : 라벨인코딩 된 데이터
         df, umap, smap = self.densify_index(df)
+
+        # 
         user2dict, train_targets, validation_targets, test_targets = self.split_df(df, len(umap))
 
         special_tokens = DotMap()
@@ -125,19 +141,25 @@ class AbstractDataset(metaclass=ABCMeta):
             shutil.rmtree(tmproot)
             print()
 
+    # rating이 기준 이하일 경우 버림
     def make_implicit(self, df):
         print('Turning into implicit ratings')
         df = df[df['rating'] >= self.min_rating]
         # return df[['uid', 'sid', 'timestamp']]
         return df
 
+    # 
     def filter_triplets(self, df):
         print('Filtering triplets')
         if self.min_sc > 0:
+            # 아이템 id별 갯수
             item_sizes = df.groupby('sid').size()
+            # 아이템 갯수가 기준값보다 이상인 것을 index
             good_items = item_sizes.index[item_sizes >= self.min_sc]
+            # 위의 index를 기준으로 아이템 filtering
             df = df[df['sid'].isin(good_items)]
 
+        # 위와 같은 기준을 user에 적용
         if self.min_uc > 0:
             user_sizes = df.groupby('uid').size()
             good_users = user_sizes.index[user_sizes >= self.min_uc]
@@ -145,24 +167,31 @@ class AbstractDataset(metaclass=ABCMeta):
 
         return df
 
+    # user-item matrix 생성
     def densify_index(self, df):
         print('Densifying index')
+        # user, item 라벨 인코딩(중복값 제거)
         umap = {u: (i+1) for i, u in enumerate(set(df['uid']))}
         smap = {s: (i+1) for i, s in enumerate(set(df['sid']))}
+        # user-item matrix 생성
         df['uid'] = df['uid'].map(umap)
         df['sid'] = df['sid'].map(smap)
         return df, umap, smap
 
     def split_df(self, df, user_count):
+        # timestamp순으로 정렬 하는 함수
         def sort_by_time(d):
             d = d.sort_values(by='timestamp')
             return {'items': list(d.sid), 'timestamps': list(d.timestamp), 'ratings': list(d.rating), 'days': list(d.days)}
 
+        # 최초 구매기록
         min_date = date.fromtimestamp(df.timestamp.min())
+        # 데이터에서 최초 구매일자 대비 며칠이 지났는지
         df['days'] = df.timestamp.map(lambda t: (date.fromtimestamp(t) - min_date).days)
         user_group = df.groupby('uid')
+        # user2dict : uid별 구매 item
         user2dict = user_group.progress_apply(sort_by_time)
-
+        
         if self.args.split == 'leave_one_out':
             train_ranges = []
             val_positions = []
