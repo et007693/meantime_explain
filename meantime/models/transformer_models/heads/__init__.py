@@ -29,7 +29,7 @@ class BertLinearPredictionHead(nn.Module):
             x = x.gather(1, candidates)  # B x C or M x C
         return x
 
-
+# encoder block에서 multi-head attention 부분
 class BertDotProductPredictionHead(nn.Module):
     def __init__(self, args, token_embeddings, input_size=None):
         super().__init__()
@@ -38,6 +38,7 @@ class BertDotProductPredictionHead(nn.Module):
         if input_size is None:
             input_size = hidden
         self.vocab_size = args.num_items + 1
+
         if args.head_use_ln:
             self.out = nn.Sequential(
                 nn.Linear(input_size, hidden),
@@ -51,7 +52,10 @@ class BertDotProductPredictionHead(nn.Module):
             )
         self.bias = nn.Parameter(torch.zeros(1, self.vocab_size))
 
+    # dot-product 하는 부분
+    # score = loss
     def forward(self, x, candidates=None):
+        # out = output
         x = self.out(x)  # B x H or M x H
         if candidates is not None:  # x : B x H
             emb = self.token_embeddings(candidates)  # B x C x H

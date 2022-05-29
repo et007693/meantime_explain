@@ -46,14 +46,15 @@ class MeantimeModel(BertBaseModel):
         # Lengths
         self.La = len(self.absolute_kernel_embeddings_list)
         self.Lr = len(self.relative_kernel_embeddings_list)
+        # num_head
         self.L = self.La + self.Lr
         # Sanity check
         assert hidden % self.L == 0, 'multi-head has to be possible'
         assert len(self.absolute_kernel_embeddings_list) > 0 or len(self.relative_kernel_embeddings_list) > 0
         ##### BODY
+        # transformer block * 2
         self.body = MeantimeBody(args, self.La, self.Lr)
         ##### Heads
-        # self.bert_head = BertDotProductPredictionHead(args)
         if args.headtype == 'dot':
             self.head = BertDotProductPredictionHead(args, self.token_embedding.emb)
         elif args.headtype == 'linear':
@@ -76,10 +77,6 @@ class MeantimeModel(BertBaseModel):
         x = d['tokens']
         attn_mask = (x > 0).unsqueeze(1).repeat(1, x.size(1), 1).unsqueeze(1)  # B x 1 x T x T
         token_embeddings = self.dropout(self.token_embedding(d)) # B x T x H
-
-        # token_embeddings = token_embeddings.unsqueeze(0).expand(self.L, -1, -1, -1)  # L x B x T x H
-        # token_embeddings = token_embeddings.chunk(self.L, dim=0)  # L of [1 x B x T x H]
-        # token_embeddings = [x.squeeze(0) for x in token_embeddings]  # L of [B x T x H]
 
         absolute_kernel_embeddings = [self.dropout(emb(d)) for emb in self.absolute_kernel_embeddings_list]  # La of [B x T x H]
         relative_kernel_embeddings = [self.dropout(emb(d)) for emb in self.relative_kernel_embeddings_list]  # Lr of [B x T x T x H]
